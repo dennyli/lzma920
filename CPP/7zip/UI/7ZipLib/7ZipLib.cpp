@@ -2,7 +2,7 @@
 //
 
 #include "stdafx.h"
-
+#include <typeinfo>
 #include "Windows/NtCheck.h"
 #include "7ZipLib.h"
 
@@ -71,6 +71,8 @@ int SevenZipCompress(CObjectVector<CDirItem>* pItems, UString* pTarget, CArchive
 	int res = MY7ZIPOP_RES_OK;
 	CreateObjectFunc createObjectFunc;
 	NWindows::NDLL::CLibrary lib;
+	UString filename;
+	wstring szfile;
 
 	if (!lib.Load(TEXT(kDllName)))
 		return MY7ZIPOP_RES_CANNOT_LOAD_7ZIP_DLL;
@@ -100,7 +102,9 @@ int SevenZipCompress(CObjectVector<CDirItem>* pItems, UString* pTarget, CArchive
 		{
 			for (int i = 0; i < pCallback->FailedFiles.Size(); i++)
 			{
-				pFailedFiles->push_back(*((wstring*)(pCallback->FailedFiles[i]));
+				filename = pCallback->FailedFiles[i];
+				szfile = filename.GetBuffer(filename.Length());
+				pFailedFiles->push_back(szfile);
 			}
 
 			res = MY7ZIPOP_RES_OK_WITH_FAILED;

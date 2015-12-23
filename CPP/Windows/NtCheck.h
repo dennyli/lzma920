@@ -5,12 +5,16 @@
 
 #ifdef _WIN32
 
+#include <VersionHelpers.h>
+
 #if !defined(_WIN64) && !defined(UNDER_CE)
 static inline bool IsItWindowsNT()
 {
-  OSVERSIONINFO vi;
-  vi.dwOSVersionInfoSize = sizeof(vi);
-  return (::GetVersionEx(&vi) && vi.dwPlatformId == VER_PLATFORM_WIN32_NT);
+  //OSVERSIONINFO vi;
+  //vi.dwOSVersionInfoSize = sizeof(vi);
+  //return (::GetVersionEx(&vi) && vi.dwPlatformId == VER_PLATFORM_WIN32_NT);
+
+	return IsWindowsServer();
 }
 #endif
 
