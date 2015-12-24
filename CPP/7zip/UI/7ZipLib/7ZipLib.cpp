@@ -14,39 +14,36 @@
 //using NWindows::NFile;
 //using NWindows::NFile::NDirectory;
 
-static int SevenZipCompress(CObjectVector<CDirItem>* items, UString* pTarget, CArchiveUpdateCallback* pCallback, vector<wstring>* pFailedFiles);
-static int SevenZipDecompress(CObjectVector<CDirItem>* items, UString* pTarget, CArchiveExtractCallback* pCallback, vector<wstring>* pFailedFiles);
+static int SevenZipCompress(CObjectVector<CDirItem>* items, 
+	UString* pTarget, 
+	CProgressCallback* pProgressCallback);
+static int SevenZipDecompress(CObjectVector<CDirItem>* items, 
+	UString* pTarget, 
+	CProgressCallback* pProgressCallback);
 
-static int FindItems(vector<wstring>* pSources, CObjectVector<CDirItem>* pItems, int opType, vector<wstring>* pFailedFiles);
+static int FindItems(vector<wstring>* pSources, 
+	CObjectVector<CDirItem>* pItems, 
+	int opType, 
+	CProgressCallback* pProgressCallback);
+
 static int CheckTarget(wstring* pPath, int opType, UString* pTarget);
 
 int SevenZipOperation(vector<wstring>* pSources, 
 	wstring* pPath, 
 	int opType, 
-	CMyUnknownImp* pCallback, 
-	vector<wstring>* pFailedFiles)
+	CProgressCallback* pProgressCallback)
 {
-	if ((pSources == NULL) || (pPath == NULL) || (pCallback == NULL) || (pFailedFiles == NULL))
+	if ((pSources == NULL) || (pPath == NULL))
 		return MY7ZIPOP_RES_PARAM_ERROR;
 
 	if (pSources->size() == 0)
 		return MY7ZIPOP_RES_SRC_IS_EMPTY;
 
-	pFailedFiles->clear();
-
 	if ((opType != MY7ZIPOP_COMPRESS) && (opType != MY7ZIPOP_DECOMPRESS))
 		return MY7ZIPOP_RES_UNKOWN_OPTYPE;
 
-	if ((typeid(*pCallback) != typeid(CArchiveUpdateCallback)) &&
-		(typeid(*pCallback) != typeid(CArchiveExtractCallback)))
-		return MY7ZIPOP_RES_UNKOWN_CALLBACKTYPE;
-
-	if (!(((opType == MY7ZIPOP_COMPRESS) && (typeid(*pCallback) == typeid(CArchiveUpdateCallback))) || 
-		((opType == MY7ZIPOP_DECOMPRESS) && (typeid(*pCallback) != typeid(CArchiveExtractCallback)))))
-		return MY7ZIPOP_RES_OP_CALLBACK_MISMATCH;
-
 	CObjectVector<CDirItem> items;
-	int result = FindItems(pSources, &items, opType, pFailedFiles);
+	int result = FindItems(pSources, &items, opType, pProgressCallback);
 	if (result != MY7ZIPOP_RES_OK)
 		return result;
 
@@ -56,20 +53,18 @@ int SevenZipOperation(vector<wstring>* pSources,
 		return result;
 
 	if (opType == MY7ZIPOP_COMPRESS)
-		return SevenZipCompress(&items, &targetPath, (CArchiveUpdateCallback*)pCallback, pFailedFiles);
+		return SevenZipCompress(&items, &targetPath, pProgressCallback);
 	else
-		return SevenZipDecompress(&items, &targetPath, (CArchiveExtractCallback*)pCallback, pFailedFiles);
+		return SevenZipDecompress(&items, &targetPath, pProgressCallback);
 }
 
-int SevenZipCompress(CObjectVector<CDirItem>* pItems, UString* pTarget, CArchiveUpdateCallback* pCallback, vector<wstring>* pFailedFiles)
+int SevenZipCompress(CObjectVector<CDirItem>* pItems, UString* pTarget, CProgressCallback* pProgressCallback)
 {
 	COutFileStream *outFileStreamSpec;
-    CMyComPtr<IOutStream> outFileStream;
 	CMyComPtr<IOutArchive> outArchive;
-	CMyComPtr<IArchiveUpdateCallback2> updateCallback(pCallback);
+	CArchiveUpdateCallback *updateCallbackSpec;
 	HRESULT result;
 	int res = MY7ZIPOP_RES_OK;
-	CreateObjectFunc createObjectFunc;
 	NWindows::NDLL::CLibrary lib;
 	UString filename;
 	wstring szfile;
@@ -77,7 +72,7 @@ int SevenZipCompress(CObjectVector<CDirItem>* pItems, UString* pTarget, CArchive
 	if (!lib.Load(TEXT(kDllName)))
 		return MY7ZIPOP_RES_CANNOT_LOAD_7ZIP_DLL;
 
-	createObjectFunc = (CreateObjectFunc)lib.GetProc("CreateObject");
+	CreateObjectFunc createObjectFunc = (CreateObjectFunc)lib.GetProc("CreateObject");
 	if (createObjectFunc == 0)
 		return MY7ZIPOP_RES_CANNOT_LOAD_7ZIP_DLL;
 
@@ -85,47 +80,57 @@ int SevenZipCompress(CObjectVector<CDirItem>* pItems, UString* pTarget, CArchive
 		return MY7ZIPOP_RES_CANNOT_LOAD_7ZIP_DLL;
 
 	outFileStreamSpec = new COutFileStream;
-	outFileStream = outFileStreamSpec;
+	CMyComPtr<IOutStream> outFileStream(outFileStreamSpec);
 	if (!outFileStreamSpec->Create(*pTarget, false))
 		return MY7ZIPOP_RES_TARGET_CANNOT_CREATED;
 
-	pCallback->Init(pItems);
+	updateCallbackSpec = new CArchiveUpdateCallback;
+	CMyComPtr<IArchiveUpdateCallback2> updateCallback(updateCallbackSpec);
+	updateCallbackSpec->Init(pItems);
+	updateCallbackSpec->SetProgressCallback(pProgressCallback);
+
+	if (pProgressCallback)
+		pProgressCallback->SetProgressType(CProgressCallback::tCompressing);
 
 	result = outArchive->UpdateItems(outFileStream, pItems->Size(), updateCallback);
-    pCallback->Finilize();
+
+	if (pProgressCallback)
+		pProgressCallback->SetProgressType(CProgressCallback::tFinilizing);
+    updateCallbackSpec->Finilize();
 
 	if (result != S_OK)
 		res = MY7ZIPOP_RES_COMPRESS_ERROR;
 	else
 	{
-		if (pCallback->FailedFiles.Size() != 0)
+		if (updateCallbackSpec->FailedFiles.Size() != 0)
 		{
-			for (int i = 0; i < pCallback->FailedFiles.Size(); i++)
+			for (int i = 0; i < updateCallbackSpec->FailedFiles.Size(); i++)
 			{
-				filename = pCallback->FailedFiles[i];
+				filename = updateCallbackSpec->FailedFiles[i];
 				szfile = filename.GetBuffer(filename.Length());
-				pFailedFiles->push_back(szfile);
+				if (pProgressCallback)
+					pProgressCallback->SetFailedPath(szfile);
+				filename.ReleaseBuffer();
 			}
 
 			res = MY7ZIPOP_RES_OK_WITH_FAILED;
 		}
 	}
 
-	delete updateCallback;
-
 	return res;
 }
 
-int SevenZipDecompress(CObjectVector<CDirItem>* pItems, UString* pTarget, CArchiveExtractCallback* pCallback, vector<wstring>* pFailedFiles)
+int SevenZipDecompress(CObjectVector<CDirItem>* pItems, UString* pTarget, CProgressCallback* pProgressCallback)
 {
 	CMyComPtr<IInArchive> inArchive;
 	NWindows::NDLL::CLibrary lib;
 	CInFileStream *fileSpec;
 	UString archiveName;
     CMyComPtr<IInStream> file;
-	CMyComPtr<IArchiveExtractCallback> extractCallback(pCallback);
+	CArchiveExtractCallback* extractCallbackSpec;
 	HRESULT result;
 	CreateObjectFunc createObjectFunc;
+	int res = MY7ZIPOP_RES_OK;
 
 	if (!lib.Load(TEXT(kDllName)))
 		return MY7ZIPOP_RES_CANNOT_LOAD_7ZIP_DLL;
@@ -146,12 +151,24 @@ int SevenZipDecompress(CObjectVector<CDirItem>* pItems, UString* pTarget, CArchi
 	if (inArchive->Open(file, 0, NULL) != S_OK)
 		return MY7ZIPOP_RES_SRC_CANNOT_OPEN;
 
-	pCallback->Init(inArchive, *pTarget);
-	result = inArchive->Extract(NULL, (UInt32)(Int32)(-1), false, extractCallback);
-	if (result != S_OK)
-		return MY7ZIPOP_RES_UNCOMPRESS_ERROR;
+	extractCallbackSpec = new CArchiveExtractCallback;
+	CMyComPtr<IArchiveExtractCallback> extractCallback(extractCallbackSpec);
+	extractCallbackSpec->Init(inArchive, *pTarget);
+	extractCallbackSpec->SetProgressCallback(pProgressCallback);
 
-	return MY7ZIPOP_RES_OK;
+	if (pProgressCallback)
+		pProgressCallback->SetProgressType(CProgressCallback::tDecompressing);
+
+	result = inArchive->Extract(NULL, (UInt32)(Int32)(-1), false, extractCallback);
+
+	if (pProgressCallback)
+		pProgressCallback->SetProgressType(CProgressCallback::tFinilizing);
+    extractCallbackSpec->Finilize();
+
+	if (result != S_OK)
+		res = MY7ZIPOP_RES_UNCOMPRESS_ERROR;
+
+	return res;
 }
 
 int CheckTarget(wstring* pPath, int opType, UString* pTarget)
@@ -192,22 +209,26 @@ int CheckTarget(wstring* pPath, int opType, UString* pTarget)
 	return result;
 }
 
-int FindItems(vector<wstring>* pSources, CObjectVector<CDirItem>* pItems, int opType, vector<wstring>* pIgores)
+int FindItems(vector<wstring>* pSources, CObjectVector<CDirItem>* pItems, int opType, CProgressCallback* pProgressCallback)
 {
 	CDirItem di;
 	UString name;
 	NFile::NFind::CFileInfoW fi;
 
 	int result = MY7ZIPOP_RES_OK;
+	if (pProgressCallback)
+		pProgressCallback->SetProgressType(CProgressCallback::tPreparing);
+
 	if (opType == MY7ZIPOP_COMPRESS)
 	{
 		// Source files
-		for(vector<wstring>::iterator iterSrc = pSources->begin(); iterSrc == pSources->end(); iterSrc++)
+		for(vector<wstring>::iterator iterSrc = pSources->begin(); iterSrc != pSources->end(); iterSrc++)
 		{
 			name = GetUnicodeString((*iterSrc).c_str());
 			if (!fi.Find(name))
 			{
-				pIgores->push_back(*iterSrc);
+				if (pProgressCallback)
+					pProgressCallback->SetFailedPath(*iterSrc);
 
 				result = MY7ZIPOP_RES_PATH_NOTFOUND;
 				continue;
@@ -229,7 +250,8 @@ int FindItems(vector<wstring>* pSources, CObjectVector<CDirItem>* pItems, int op
 		name = GetUnicodeString(pSources->front().c_str());
 		if (!fi.Find(name))
 		{
-			pIgores->push_back(pSources->front());
+			if (pProgressCallback)
+				pProgressCallback->SetFailedPath(pSources->front());
 
 			result = MY7ZIPOP_RES_PATH_NOTFOUND;
 		}

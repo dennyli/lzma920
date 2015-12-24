@@ -1,10 +1,8 @@
-#ifdef MY7ZIPLIB_EXPORTS
-#define MY7ZIPLIB_API __declspec(dllexport)
-#else
-#define MY7ZIPLIB_API __declspec(dllimport)
-#endif
-
+#pragma once
 // This lib uses 7zra.dll: created by compiling CPP\7zip\Bundles\Format7zR with console command NMAKE in VC2010 console.
+
+#include "exportmacro.h"
+#include "Types.h"
 
 // OP Type
 #define MY7ZIPOP_COMPRESS					0
@@ -25,15 +23,14 @@
 #define MY7ZIPOP_RES_SRC_CANNOT_OPEN		-11
 #define MY7ZIPOP_RES_UNCOMPRESS_ERROR		-12
 
-class CMyUnknownImp;
-
 #include <vector>
+#include <string>
+
+#include "ProgressCallback.h"
 
 using namespace std;
 
-#ifdef __cplusplus 
-extern "C" { 
-#endif 
+EXTERN_C_BEGIN
 
 // 7ZipOperation
 // paras:
@@ -48,9 +45,6 @@ extern "C" {
 MY7ZIPLIB_API int SevenZipOperation(vector<wstring>* pSources, 
 	wstring* pPath, 
 	int opType, 
-	CMyUnknownImp* pCallback, 
-	vector<wstring>* pFailedFiles);
+	CProgressCallback* pProgressCallback);
 
-#ifdef __cplusplus 
-}
-#endif
+EXTERN_C_END

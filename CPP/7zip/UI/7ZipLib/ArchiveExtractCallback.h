@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Common.h"
+#include "ProgressCallback.h"
 
 class CArchiveExtractCallback:
   public IArchiveExtractCallback,
@@ -40,13 +41,22 @@ private:
   COutFileStream *_outFileStreamSpec;
   CMyComPtr<ISequentialOutStream> _outFileStream;
 
+  CProgressCallback* ProgressCallback;
+
 public:
   void Init(IInArchive *archiveHandler, const UString &directoryPath);
+
+  void SetProgressCallback(CProgressCallback* pProgressCallback)
+  {
+	  ProgressCallback = pProgressCallback;
+  }
 
   UInt64 NumErrors;
   bool PasswordIsDefined;
   UString Password;
 
   CArchiveExtractCallback() : PasswordIsDefined(false) {}
+  ~CArchiveExtractCallback() { Finilize(); }
+  HRESULT Finilize();
 };
 

@@ -5,16 +5,20 @@
 
 #ifdef _WIN32
 
+#if _MSC_VER >= 1800 // VC2013
 #include <VersionHelpers.h>
+#endif //_MSC_VER >= 1800
 
 #if !defined(_WIN64) && !defined(UNDER_CE)
 static inline bool IsItWindowsNT()
 {
-  //OSVERSIONINFO vi;
-  //vi.dwOSVersionInfoSize = sizeof(vi);
-  //return (::GetVersionEx(&vi) && vi.dwPlatformId == VER_PLATFORM_WIN32_NT);
-
+#if _MSC_VER >= 1800 // VC2013
 	return IsWindowsServer();
+#else
+  OSVERSIONINFO vi;
+  vi.dwOSVersionInfoSize = sizeof(vi);
+  return (::GetVersionEx(&vi) && vi.dwPlatformId == VER_PLATFORM_WIN32_NT);
+#endif //_MSC_VER >= 1800
 }
 #endif
 

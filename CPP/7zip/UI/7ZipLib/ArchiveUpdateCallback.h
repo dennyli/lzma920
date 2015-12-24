@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Common.h"
+#include "ProgressCallback.h"
 
 class CArchiveUpdateCallback:
   public IArchiveUpdateCallback2,
@@ -48,11 +49,20 @@ public:
   ~CArchiveUpdateCallback() { Finilize(); }
   HRESULT Finilize();
 
+  CProgressCallback* ProgressCallback;
+
   void Init(const CObjectVector<CDirItem> *dirItems)
   {
     DirItems = dirItems;
     m_NeedBeClosed = false;
     FailedFiles.Clear();
     FailedCodes.Clear();
+
+	ProgressCallback = NULL;
+  }
+
+  void SetProgressCallback(CProgressCallback* pProgressCallback)
+  {
+	  ProgressCallback = pProgressCallback;
   }
 };
